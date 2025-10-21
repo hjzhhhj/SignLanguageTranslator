@@ -64,7 +64,7 @@ class SignLanguageDataCollector:
 
             # 녹화 중이고 손이 감지되면 데이터 저장
             if self.recording and landmarks_list:
-                normalized_landmarks = self.hand_detector.normalize_landmarks(landmarks_list[0])
+                normalized_landmarks = self._get_padded_feature_vector(landmarks_list)
                 current_sequence.append(normalized_landmarks)
 
                 # 시퀀스 길이가 충분하면 저장

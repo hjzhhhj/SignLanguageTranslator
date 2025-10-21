@@ -4,7 +4,7 @@ import pyttsx3
 from threading import Thread, Lock
 from queue import Queue
 import time
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 from src.hand_detector import HandDetector
 from src.sign_language_model import SignLanguageModel
 
@@ -66,6 +66,35 @@ class SignLanguageTranslator:
         thread = Thread(target=_speak)
         thread.daemon = True
         thread.start()
+        
+    # src/sign_translator.py
+
+# ... (기존 코드)
+
+# SignLanguageTranslator 클래스 내부에 다음 메서드 추가
+    def _get_padded_feature_vector(self, landmarks_list: List[List[float]]) -> np.ndarray:
+        """
+        감지된 랜드마크 리스트를 2손(128차원) 기준으로 패딩하여 반환합니다.
+        (data_collector.py에서 복사)
+        """
+        all_hand_features = []
+        feature_dim = self.hand_detector.FEATURE_DIMENSION # 64
+
+        # 1. 감지된 손의 수만큼 특징 추출
+        for landmarks in landmarks_list:
+            normalized_features = self.hand_detector.normalize_landmarks(landmarks)
+            all_hand_features.append(normalized_features)
+            
+        # 2. 특징 벡터의 수를 2개로 강제 정규화 (128차원 보장)
+        if len(all_hand_features) < 2:
+            num_missing_hands = 2 - len(all_hand_features)
+            padding_feature = np.zeros(feature_dim)
+            for _ in range(num_missing_hands):
+                all_hand_features.append(padding_feature)
+                
+        # 3. 두 손의 특징을 하나의 128차원 벡터로 합치기
+        feature_vector = np.concatenate(all_hand_features[:2])
+        return feature_vector
 
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, Optional[str]]:
         """
