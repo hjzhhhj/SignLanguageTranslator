@@ -10,90 +10,101 @@ from typing import List, Optional
 class SignLanguageDataCollector:
     def __init__(self, data_dir: str = "data"):
         """
-        수어 데이터 수집 도구
+        수어(수화) 데이터 수집 도구 클래스
 
         Args:
-            data_dir: 데이터 저장 디렉토리
+            data_dir: 수집한 데이터를 저장할 상위 디렉토리 경로
         """
         self.data_dir = data_dir
-        self.hand_detector = HandDetector()
-        self.current_label = None
-        self.recording = False
-        self.sequence_data = []
-        self.sequence_counter = 0
+        self.hand_detector = HandDetector()  # 손 랜드마크 탐지기
+        self.current_label = None             # 현재 수집 중인 수어 레이블
+        self.recording = False                # 녹화 상태 여부 플래그
+        self.sequence_data = []               # 현재 시퀀스 데이터 저장 버퍼
+        self.sequence_counter = 0             # 시퀀스 인덱스 카운터
 
-        # 디렉토리 생성
+        # 학습/테스트용 디렉토리 생성
         os.makedirs(f"{data_dir}/train", exist_ok=True)
         os.makedirs(f"{data_dir}/test", exist_ok=True)
 
     def collect_data(self, label: str, num_sequences: int = 30):
         """
-        특정 레이블의 수어 데이터 수집
+        특정 수어 레이블에 대한 데이터 시퀀스들을 수집
 
         Args:
-            label: 수어 레이블
-            num_sequences: 수집할 시퀀스 개수
+            label: 수집할 수어 단어 (예: '안녕하세요')
+            num_sequences: 수집할 시퀀스 개수 (한 시퀀스는 약 30프레임)
         """
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(0)  # 웹캠 연결
         self.current_label = label
-        collected_sequences = 0
-        current_sequence = []
+        collected_sequences = 0    # 수집된 시퀀스 개수 카운트
+        current_sequence = []      # 현재 녹화 중인 시퀀스 버퍼
 
+        # 사용자 안내 출력
         print(f"\n=== '{label}' 수어 데이터 수집 시작 ===")
-        print("스페이스바를 눌러 녹화 시작/정지")
-        print("ESC를 눌러 종료")
+        print("스페이스바: 녹화 시작/정지 | ESC: 종료")
         print(f"목표: {num_sequences}개 시퀀스\n")
 
+        # 목표 수만큼 시퀀스를 수집할 때까지 반복
         while collected_sequences < num_sequences:
             ret, frame = cap.read()
             if not ret:
-                break
+                break  # 카메라 입력이 없으면 종료
 
-            # 손 인식
+            # 손 인식 수행
             annotated_frame, landmarks_list = self.hand_detector.detect_hands(frame)
 
-            # 상태 표시
+            # 상태 텍스트 표시
             status_text = f"Label: {label} | Collected: {collected_sequences}/{num_sequences}"
+
+            # 녹화 중인 경우 화면에 빨간 텍스트로 표시
             if self.recording:
                 status_text += " | RECORDING"
                 cv2.putText(annotated_frame, "RECORDING", (10, 30),
-                          cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
+            # 현재 상태를 영상에 출력
             cv2.putText(annotated_frame, status_text, (10, 60),
-                      cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
-            # 녹화 중이고 손이 감지되면 데이터 저장
+            # 녹화 중이며 손이 감지되면 데이터 수집
             if self.recording and landmarks_list:
+                # 손 랜드마크를 2손 기준 128차원 특징 벡터로 정규화
                 normalized_landmarks = self._get_padded_feature_vector(landmarks_list)
                 current_sequence.append(normalized_landmarks)
 
-                # 시퀀스 길이가 충분하면 저장
+                # 시퀀스가 30프레임 이상 쌓이면 저장
                 if len(current_sequence) >= 30:
                     self._save_sequence(current_sequence, label, collected_sequences)
                     collected_sequences += 1
-                    current_sequence = []
-                    self.recording = False
+                    current_sequence = []   # 버퍼 초기화
+                    self.recording = False  # 자동으로 녹화 종료
                     print(f"시퀀스 {collected_sequences} 저장 완료")
 
+            # 영상 출력
             cv2.imshow('Data Collection', annotated_frame)
 
+            # 키 입력 처리
             key = cv2.waitKey(1) & 0xFF
-            if key == 27:  # ESC
+            if key == 27:  # ESC → 종료
                 break
-            elif key == 32:  # Space
+            elif key == 32:  # Space → 녹화 시작/정지
                 self.recording = not self.recording
                 if self.recording:
-                    current_sequence = []
+                    current_sequence = []  # 새 시퀀스 시작
                     print("녹화 시작...")
                 else:
                     print("녹화 중지")
 
+        # 종료 처리
         cap.release()
         cv2.destroyAllWindows()
         print(f"\n'{label}' 데이터 수집 완료: {collected_sequences}개 시퀀스")
 
     def _save_sequence(self, sequence: list, label: str, index: int):
-        """시퀀스 데이터 저장"""
+        """
+        하나의 시퀀스 데이터를 파일로 저장 (.npy + .json 메타데이터)
+        """
+        # 파일 이름에 시간 스탬프 포함
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{self.data_dir}/train/{label}_{timestamp}_{index}.npy"
 
@@ -101,7 +112,7 @@ class SignLanguageDataCollector:
         sequence_array = np.array(sequence)
         np.save(filename, sequence_array)
 
-        # 메타데이터 저장
+        # 메타데이터 JSON으로 저장
         metadata = {
             "label": label,
             "timestamp": timestamp,
@@ -114,28 +125,29 @@ class SignLanguageDataCollector:
 
     def create_dataset_from_files(self, data_type: str = "train"):
         """
-        저장된 파일들로부터 데이터셋 생성
+        저장된 .npy 파일로부터 학습/테스트용 데이터셋 생성
 
         Args:
             data_type: "train" 또는 "test"
 
         Returns:
-            X: 특징 데이터
-            y: 레이블 데이터
-            label_map: 레이블 매핑
+            X: 특징 데이터 (N, 30, 128)
+            y: 원-핫 인코딩된 레이블 벡터
+            label_map: {레이블이름: 인덱스} 매핑 딕셔너리
         """
         data_path = f"{self.data_dir}/{data_type}"
-        X = []
-        y = []
+        X, y = [], []
         label_map = {}
         label_counter = 0
 
-        # 모든 .npy 파일 읽기
+        # 해당 디렉토리의 모든 .npy 파일을 순회
         for filename in os.listdir(data_path):
             if filename.endswith('.npy'):
-                # 레이블 추출
+                # 파일 이름에서 레이블 추출
+                # 예: hello_20231011_001.npy → "hello"
                 label = '_'.join(filename.split('_')[:-3])
 
+                # 새 레이블이면 인덱스 부여
                 if label not in label_map:
                     label_map[label] = label_counter
                     label_counter += 1
@@ -144,7 +156,7 @@ class SignLanguageDataCollector:
                 file_path = os.path.join(data_path, filename)
                 sequence = np.load(file_path)
 
-                # 시퀀스 길이 정규화 (30 프레임으로)
+                # 시퀀스 길이를 30프레임으로 정규화
                 if len(sequence) > 30:
                     sequence = sequence[:30]
                 elif len(sequence) < 30:
@@ -154,6 +166,7 @@ class SignLanguageDataCollector:
                 X.append(sequence)
                 y.append(label_map[label])
 
+        # 배열로 변환
         if X:
             X = np.array(X)
             y = tf.keras.utils.to_categorical(y, num_classes=len(label_map))
@@ -161,53 +174,57 @@ class SignLanguageDataCollector:
         return X, y, label_map
 
     def interactive_collection(self):
-        """대화형 데이터 수집 인터페이스"""
+        """
+        터미널에서 사용자 입력을 받아 인터랙티브하게 수어 데이터를 수집하는 함수
+        """
         print("\n=== 수어 데이터 수집 프로그램 ===")
-        print("수집할 수어 단어를 입력하고 Enter를 누르세요")
-        print("'quit'을 입력하면 종료됩니다\n")
+        print("수집할 수어 단어를 입력하고 Enter를 누르세요.")
+        print("'quit'을 입력하면 종료됩니다.\n")
 
         while True:
+            # 수어 단어 입력
             label = input("수어 단어 입력 (한글): ").strip()
 
+            # 종료 명령어
             if label.lower() == 'quit':
                 break
 
+            # 정상 입력 시 데이터 수집 시작
             if label:
                 try:
                     num_sequences = int(input("수집할 시퀀스 개수 (기본값: 30): ") or 30)
                     self.collect_data(label, num_sequences)
                 except ValueError:
-                    print("올바른 숫자를 입력하세요")
+                    print("⚠️ 올바른 숫자를 입력하세요.")
                 except KeyboardInterrupt:
-                    print("\n수집 중단됨")
+                    print("\n수집 중단됨.")
 
-        print("\n데이터 수집 종료")
+        print("\n데이터 수집 종료.")
 
     def _get_padded_feature_vector(self, landmarks_list: List[List[float]]) -> np.ndarray:
         """
-        감지된 랜드마크 리스트를 2손(128차원) 기준으로 패딩하여 반환합니다.
+        손 랜드마크 리스트를 입력받아 2손(128차원) 기준으로 패딩된 벡터를 반환
+
+        각 손은 64차원 특징으로 변환되고, 손이 하나만 감지되면 나머지는 0으로 채워짐.
         """
         all_hand_features = []
-        
-        # 1. 감지된 손의 수만큼 특징 추출
+
+        # 감지된 손마다 특징 추출
         for landmarks in landmarks_list:
-            # 단일 손의 64차원 특징 벡터 추출
+            # 한 손의 랜드마크를 정규화하여 64차원 벡터로 변환
             normalized_features = self.hand_detector.normalize_landmarks(landmarks)
             all_hand_features.append(normalized_features)
-            
-        # 2. 특징 벡터의 수를 2개로 강제 정규화 (128차원 보장)
-        if len(all_hand_features) < 2:
-            # 2손 미만인 경우, 나머지 손은 0으로 패딩 (64차원)
-            num_missing_hands = 2 - len(all_hand_features)
-            
-            feature_dim = self.hand_detector.FEATURE_DIMENSION 
 
+        # 손이 2개 미만이면 0벡터로 패딩
+        if len(all_hand_features) < 2:
+            num_missing_hands = 2 - len(all_hand_features)
+            feature_dim = self.hand_detector.FEATURE_DIMENSION  # 예: 64
             padding_feature = np.zeros(feature_dim)
 
             for _ in range(num_missing_hands):
                 all_hand_features.append(padding_feature)
-                
-        # 3. 두 손의 특징을 하나의 128차원 벡터로 합치기
+
+        # 두 손(좌, 우)의 특징을 합쳐 128차원 벡터로 생성
         feature_vector = np.concatenate(all_hand_features[:2])
-        
+
         return feature_vector
