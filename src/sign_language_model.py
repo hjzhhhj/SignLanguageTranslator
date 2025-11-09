@@ -31,9 +31,8 @@ class SignLanguageModel:
             self.load_model(model_path)
         else:
             self.build_model()
-
-        # 기본 수어 단어 사전 초기화
-        self.initialize_sign_vocabulary()
+            # 기본 수어 단어 사전 초기화 (새 모델인 경우에만)
+            self.initialize_sign_vocabulary()
 
     def initialize_sign_vocabulary(self):
         """
@@ -171,9 +170,13 @@ class SignLanguageModel:
 
         # 입력 길이가 부족할 경우 패딩
         if landmarks_sequence.shape[0] < self.input_shape[0]:
-            padding = np.zeros((self.input_shape[0] - landmarks_sequence.shape[0],
-                                landmarks_sequence.shape[1]))
+            padding = np.zeros(
+                (self.input_shape[0] - landmarks_sequence.shape[0], landmarks_sequence.shape[1]),
+                dtype=np.float32
+            )
             landmarks_sequence = np.vstack([padding, landmarks_sequence])
+
+        landmarks_sequence = landmarks_sequence.astype(np.float32)
 
         # 모델 입력 형태 맞추기 (1, 30, 128)
         input_data = np.expand_dims(landmarks_sequence[-self.input_shape[0]:], axis=0)
@@ -197,7 +200,7 @@ class SignLanguageModel:
         Args:
             landmarks: 현재 프레임의 랜드마크 벡터 (128차원)
         """
-        self.sequence_buffer.append(landmarks)
+        self.sequence_buffer.append(np.asarray(landmarks, dtype=np.float32))
 
     def get_sequence_array(self) -> np.ndarray:
         """
@@ -207,8 +210,8 @@ class SignLanguageModel:
             np.ndarray: (len(buffer), 128)
         """
         if len(self.sequence_buffer) == 0:
-            return np.zeros((0, 128))
-        return np.array(self.sequence_buffer)
+            return np.zeros((0, self.input_shape[1]), dtype=np.float32)
+        return np.stack(self.sequence_buffer).astype(np.float32)
 
     def save_model(self, path: str):
         """
@@ -232,6 +235,7 @@ class SignLanguageModel:
             path: 모델 경로 (.h5)
         """
         self.model = tf.keras.models.load_model(path)
+        print(f"✓ 모델 로드 성공: {path}")
 
         labels_path = path.replace('.h5', '_labels.json')
         if os.path.exists(labels_path):
@@ -239,6 +243,11 @@ class SignLanguageModel:
                 labels_data = json.load(f)
                 # JSON 키는 문자열 → int로 변환
                 self.sign_labels = {int(k): v for k, v in labels_data.items()}
+                # 로드된 레이블 수에 맞춰 num_classes 업데이트
+                self.num_classes = len(self.sign_labels)
+                print(f"✓ 레이블 로드 성공: {list(self.sign_labels.values())}")
+        else:
+            print(f"⚠ 레이블 파일을 찾을 수 없습니다: {labels_path}")
 
     def create_augmented_data(self,
                               X: np.ndarray,
@@ -255,23 +264,33 @@ class SignLanguageModel:
         """
         augmented_X, augmented_y = [], []
 
-        for i in range(len(X)):
+        sequence_length = X.shape[1]
+        feature_dim = X.shape[2]
+
+        for sample, label in zip(X, y):
+            sample = sample.astype(np.float32)
+            label = label.astype(np.float32)
+
             # ✅ 원본 데이터
-            augmented_X.append(X[i])
-            augmented_y.append(y[i])
+            augmented_X.append(sample)
+            augmented_y.append(label)
 
             # ✅ 노이즈 추가 (랜덤 잡음)
-            noise = np.random.normal(0, 0.01, X[i].shape)
-            augmented_X.append(X[i] + noise)
-            augmented_y.append(y[i])
+            noise = np.random.normal(0, 0.01, sample.shape).astype(np.float32)
+            augmented_X.append(sample + noise)
+            augmented_y.append(label)
 
-            # ✅ 시간 축 랜덤 샘플링 (90% 프레임만 유지)
-            if len(X[i]) > 10:
-                indices = np.random.choice(len(X[i]),
-                                           size=int(len(X[i]) * 0.9),
-                                           replace=False)
-                indices.sort()
-                augmented_X.append(X[i][indices])
-                augmented_y.append(y[i])
+            # ✅ 시간 축 랜덤 샘플링 (프레임 드롭 후 패딩)
+            if sequence_length > 10:
+                keep_length = max(10, int(sequence_length * 0.9))
+                indices = np.sort(np.random.choice(sequence_length, size=keep_length, replace=False))
+                sampled = sample[indices]
 
-        return np.array(augmented_X), np.array(augmented_y)
+                if sampled.shape[0] < sequence_length:
+                    padding = np.zeros((sequence_length - sampled.shape[0], feature_dim), dtype=np.float32)
+                    sampled = np.vstack([padding, sampled])
+
+                augmented_X.append(sampled)
+                augmented_y.append(label)
+
+        return np.array(augmented_X, dtype=np.float32), np.array(augmented_y, dtype=np.float32)

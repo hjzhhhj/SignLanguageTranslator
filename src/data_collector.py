@@ -5,7 +5,8 @@ import json
 import tensorflow as tf
 from datetime import datetime
 from src.hand_detector import HandDetector
-from typing import List, Optional
+from typing import Dict, List, Optional
+from PIL import Image, ImageDraw, ImageFont
 
 class SignLanguageDataCollector:
     def __init__(self, data_dir: str = "data"):
@@ -25,6 +26,38 @@ class SignLanguageDataCollector:
         # 학습/테스트용 디렉토리 생성
         os.makedirs(f"{data_dir}/train", exist_ok=True)
         os.makedirs(f"{data_dir}/test", exist_ok=True)
+
+    def _put_korean_text(self, frame: np.ndarray, text: str, position: tuple,
+                         font_size: int = 30, color: tuple = (255, 255, 255)):
+        """
+        OpenCV 이미지에 한글 텍스트를 렌더링
+        """
+        img_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        draw = ImageDraw.Draw(img_pil)
+
+        try:
+            font_paths = [
+                "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+                "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
+                "/Library/Fonts/AppleGothic.ttf"
+            ]
+
+            font = None
+            for font_path in font_paths:
+                try:
+                    font = ImageFont.truetype(font_path, font_size)
+                    break
+                except:
+                    continue
+
+            if font is None:
+                font = ImageFont.load_default()
+        except:
+            font = ImageFont.load_default()
+
+        color_rgb = (color[2], color[1], color[0])
+        draw.text(position, text, font=font, fill=color_rgb)
+        return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
     def collect_data(self, label: str, num_sequences: int = 30):
         """
@@ -53,18 +86,15 @@ class SignLanguageDataCollector:
             # 손 인식 수행
             annotated_frame, landmarks_list = self.hand_detector.detect_hands(frame)
 
-            # 상태 텍스트 표시
-            status_text = f"Label: {label} | Collected: {collected_sequences}/{num_sequences}"
-
             # 녹화 중인 경우 화면에 빨간 텍스트로 표시
             if self.recording:
-                status_text += " | RECORDING"
                 cv2.putText(annotated_frame, "RECORDING", (10, 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
-            # 현재 상태를 영상에 출력
-            cv2.putText(annotated_frame, status_text, (10, 60),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            # 상태 텍스트 표시 (한글 지원)
+            status_text = f"레이블: {label} | 수집: {collected_sequences}/{num_sequences}"
+            annotated_frame = self._put_korean_text(annotated_frame, status_text, (10, 60),
+                                                     font_size=25, color=(255, 255, 255))
 
             # 녹화 중이며 손이 감지되면 데이터 수집
             if self.recording and landmarks_list:
@@ -123,12 +153,15 @@ class SignLanguageDataCollector:
         with open(metadata_file, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, ensure_ascii=False, indent=2)
 
-    def create_dataset_from_files(self, data_type: str = "train"):
+    def create_dataset_from_files(self,
+                                  data_type: str = "train",
+                                  label_map: Optional[Dict[str, int]] = None):
         """
         저장된 .npy 파일로부터 학습/테스트용 데이터셋 생성
 
         Args:
             data_type: "train" 또는 "test"
+            label_map: 레이블 이름 -> 인덱스 매핑(제공 시 그대로 사용)
 
         Returns:
             X: 특징 데이터 (N, 30, 128)
@@ -137,8 +170,9 @@ class SignLanguageDataCollector:
         """
         data_path = f"{self.data_dir}/{data_type}"
         X, y = [], []
-        label_map = {}
-        label_counter = 0
+        allow_new_labels = label_map is None
+        label_map = {} if label_map is None else dict(label_map)
+        label_counter = len(label_map)
 
         # 해당 디렉토리의 모든 .npy 파일을 순회
         for filename in os.listdir(data_path):
@@ -149,18 +183,21 @@ class SignLanguageDataCollector:
 
                 # 새 레이블이면 인덱스 부여
                 if label not in label_map:
+                    if not allow_new_labels:
+                        # 정의되지 않은 레이블은 건너뜀
+                        continue
                     label_map[label] = label_counter
                     label_counter += 1
 
                 # 데이터 로드
                 file_path = os.path.join(data_path, filename)
-                sequence = np.load(file_path)
+                sequence = np.load(file_path).astype(np.float32)
 
                 # 시퀀스 길이를 30프레임으로 정규화
                 if len(sequence) > 30:
                     sequence = sequence[:30]
                 elif len(sequence) < 30:
-                    padding = np.zeros((30 - len(sequence), sequence.shape[1]))
+                    padding = np.zeros((30 - len(sequence), sequence.shape[1]), dtype=np.float32)
                     sequence = np.vstack([padding, sequence])
 
                 X.append(sequence)
@@ -168,7 +205,7 @@ class SignLanguageDataCollector:
 
         # 배열로 변환
         if X:
-            X = np.array(X)
+            X = np.array(X, dtype=np.float32)
             y = tf.keras.utils.to_categorical(y, num_classes=len(label_map))
 
         return X, y, label_map
@@ -208,23 +245,28 @@ class SignLanguageDataCollector:
         각 손은 64차원 특징으로 변환되고, 손이 하나만 감지되면 나머지는 0으로 채워짐.
         """
         all_hand_features = []
+        feature_dim = self.hand_detector.FEATURE_DIMENSION
 
         # 감지된 손마다 특징 추출
         for landmarks in landmarks_list:
-            # 한 손의 랜드마크를 정규화하여 64차원 벡터로 변환
+            landmarks_array = np.array(landmarks, dtype=np.float32).reshape(-1, 3)
+            wrist_x = landmarks_array[0, 0]
             normalized_features = self.hand_detector.normalize_landmarks(landmarks)
-            all_hand_features.append(normalized_features)
+            all_hand_features.append((wrist_x, normalized_features))
+
+        # 왼손 → 오른손 순으로 정렬
+        all_hand_features.sort(key=lambda item: item[0])
+        sorted_features = [feat for _, feat in all_hand_features]
 
         # 손이 2개 미만이면 0벡터로 패딩
-        if len(all_hand_features) < 2:
-            num_missing_hands = 2 - len(all_hand_features)
-            feature_dim = self.hand_detector.FEATURE_DIMENSION  # 예: 64
-            padding_feature = np.zeros(feature_dim)
+        if len(sorted_features) < 2:
+            num_missing_hands = 2 - len(sorted_features)
+            padding_feature = np.zeros(feature_dim, dtype=np.float32)
 
             for _ in range(num_missing_hands):
-                all_hand_features.append(padding_feature)
+                sorted_features.append(padding_feature)
 
         # 두 손(좌, 우)의 특징을 합쳐 128차원 벡터로 생성
-        feature_vector = np.concatenate(all_hand_features[:2])
+        feature_vector = np.concatenate(sorted_features[:2]).astype(np.float32)
 
         return feature_vector

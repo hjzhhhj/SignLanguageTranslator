@@ -7,6 +7,7 @@ import time
 from typing import List, Optional, Tuple
 from src.hand_detector import HandDetector
 from src.sign_language_model import SignLanguageModel
+from PIL import Image, ImageDraw, ImageFont
 
 
 class SignLanguageTranslator:
@@ -20,9 +21,16 @@ class SignLanguageTranslator:
         self.hand_detector = HandDetector()
         self.sign_model = SignLanguageModel(model_path=model_path)
 
-        # 음성 합성(TTS) 엔진 초기화
-        self.tts_engine = pyttsx3.init()
-        self._setup_tts()
+        # 음성 합성(TTS) 엔진 초기화 (실패해도 계속 실행)
+        try:
+            self.tts_engine = pyttsx3.init()
+            self._setup_tts()
+            self.tts_available = True
+            print("✓ TTS 엔진 초기화 성공")
+        except Exception as e:
+            self.tts_engine = None
+            self.tts_available = False
+            print(f"⚠ TTS 엔진 초기화 실패 (음성 출력 비활성화): {e}")
 
         # 번역 관리용 큐 및 상태 변수
         self.translation_queue = Queue()
@@ -39,6 +47,56 @@ class SignLanguageTranslator:
         self.display_text = ""
         self.confidence_score = 0.0
         self.text_lock = Lock()  # 스레드 안전성 보장용 락
+
+    # ==============================
+    # 🔹 한글 텍스트 렌더링 (PIL 사용)
+    # ==============================
+    def _put_korean_text(self, frame: np.ndarray, text: str, position: tuple,
+                         font_size: int = 50, color: tuple = (0, 255, 0)):
+        """
+        OpenCV 이미지에 한글 텍스트를 렌더링
+        Args:
+            frame: OpenCV 이미지 (BGR)
+            text: 표시할 한글 텍스트
+            position: (x, y) 좌표
+            font_size: 폰트 크기
+            color: 텍스트 색상 (B, G, R)
+        Returns:
+            텍스트가 그려진 이미지
+        """
+        # OpenCV BGR -> PIL RGB 변환
+        img_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        draw = ImageDraw.Draw(img_pil)
+
+        # 시스템 한글 폰트 사용 (Mac 기준)
+        try:
+            # Mac 시스템 폰트 경로들
+            font_paths = [
+                "/System/Library/Fonts/AppleSDGothicNeo.ttc",  # Mac 기본 한글 폰트
+                "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
+                "/Library/Fonts/AppleGothic.ttf"
+            ]
+
+            font = None
+            for font_path in font_paths:
+                try:
+                    font = ImageFont.truetype(font_path, font_size)
+                    break
+                except:
+                    continue
+
+            if font is None:
+                # 폰트를 찾지 못하면 기본 폰트 사용
+                font = ImageFont.load_default()
+        except:
+            font = ImageFont.load_default()
+
+        # PIL RGB 색상으로 변환 (BGR -> RGB)
+        color_rgb = (color[2], color[1], color[0])
+        draw.text(position, text, font=font, fill=color_rgb)
+
+        # PIL RGB -> OpenCV BGR 변환
+        return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
     # ==============================
     # 🔹 TTS(음성 출력) 설정
@@ -58,6 +116,9 @@ class SignLanguageTranslator:
 
     def speak_text(self, text: str):
         """텍스트를 음성으로 출력 (비동기 스레드 방식)"""
+        if not self.tts_available:
+            return  # TTS 사용 불가능하면 무시
+
         def _speak():
             self.tts_engine.say(text)
             self.tts_engine.runAndWait()
@@ -79,18 +140,23 @@ class SignLanguageTranslator:
 
         # 감지된 손 개수만큼 특징 추출
         for landmarks in landmarks_list:
+            landmarks_array = np.array(landmarks, dtype=np.float32).reshape(-1, 3)
+            wrist_x = landmarks_array[0, 0]  # 손목 x좌표 기준으로 좌/우 손 구분
             normalized_features = self.hand_detector.normalize_landmarks(landmarks)
-            all_hand_features.append(normalized_features)
-            
+            all_hand_features.append((wrist_x, normalized_features))
+
         # 손이 한 개만 감지된 경우, 0벡터로 보완
-        if len(all_hand_features) < 2:
-            num_missing_hands = 2 - len(all_hand_features)
-            padding_feature = np.zeros(feature_dim)
+        all_hand_features.sort(key=lambda item: item[0])
+        sorted_features = [feat for _, feat in all_hand_features]
+
+        if len(sorted_features) < 2:
+            num_missing_hands = 2 - len(sorted_features)
+            padding_feature = np.zeros(feature_dim, dtype=np.float32)
             for _ in range(num_missing_hands):
-                all_hand_features.append(padding_feature)
-                
+                sorted_features.append(padding_feature)
+
         # 두 손의 특징을 합쳐 128차원 벡터로 구성
-        feature_vector = np.concatenate(all_hand_features[:2])
+        feature_vector = np.concatenate(sorted_features[:2]).astype(np.float32)
         return feature_vector
 
     # ==============================
@@ -107,9 +173,9 @@ class SignLanguageTranslator:
         translation = None
 
         if landmarks_list:
-            # 감지된 손의 랜드마크를 정규화하여 모델 입력으로 사용
-            normalized_landmarks = self.hand_detector.normalize_landmarks(landmarks_list[0])
-            self.sign_model.update_sequence_buffer(normalized_landmarks)
+            # 감지된 손들의 랜드마크를 2손 기준 벡터로 변환
+            feature_vector = self._get_padded_feature_vector(landmarks_list)
+            self.sign_model.update_sequence_buffer(feature_vector)
 
             # 일정 길이 이상 시퀀스가 쌓이면 예측 수행
             if len(self.sign_model.sequence_buffer) >= self.min_sequence_length:
@@ -119,6 +185,18 @@ class SignLanguageTranslator:
                 )
 
                 current_time = time.time()
+
+                # ⚠️ 클래스가 1개뿐인 경우 경고: 신뢰도가 높아도 예측하지 않음
+                if self.sign_model.num_classes <= 1:
+                    # 경고 메시지 표시 (처음 한 번만)
+                    if not hasattr(self, '_warned_single_class'):
+                        print("\n⚠️ 경고: 학습된 클래스가 1개뿐입니다.")
+                        print("더 많은 수어 단어를 수집하고 재학습해주세요:")
+                        print("  python3.11 main.py --mode collect")
+                        print("  python3.11 main.py --mode train\n")
+                        self._warned_single_class = True
+                    predicted_sign = None  # 예측 무시
+
                 if predicted_sign and (
                     predicted_sign != self.last_prediction or
                     current_time - self.last_prediction_time > self.prediction_cooldown
@@ -149,13 +227,12 @@ class SignLanguageTranslator:
 
         with self.text_lock:
             if self.display_text:
-                # 중앙에 번역 텍스트 표시
-                text_size = cv2.getTextSize(self.display_text, cv2.FONT_HERSHEY_SIMPLEX, 1.5, 3)[0]
-                text_x = (width - text_size[0]) // 2
-                cv2.putText(frame, self.display_text, (text_x, 50),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
+                # 중앙에 번역 텍스트 표시 (한글 지원)
+                text_x = width // 2 - 50  # 대략 중앙
+                frame = self._put_korean_text(frame, self.display_text, (text_x, 30),
+                                               font_size=50, color=(0, 255, 0))
 
-                # 신뢰도 표시
+                # 신뢰도 표시 (영문이므로 cv2.putText 사용 가능)
                 conf_text = f"Confidence: {self.confidence_score:.2%}"
                 cv2.putText(frame, conf_text, (10, 70),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)

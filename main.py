@@ -23,7 +23,7 @@ def main():
 
     # 사용할 모델 파일 경로 지정
     parser.add_argument(
-        '--model', type=str, default=None,
+        '--model', type=str, default='models/sign_language_model.h5',
         help='사용할 모델 파일 경로'
     )
 

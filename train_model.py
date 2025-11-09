@@ -29,7 +29,7 @@ def train_sign_language_model():
         return
     
     # 3. 테스트 데이터 로드 (있을 경우)
-    X_test, y_test, _ = collector.create_dataset_from_files("test")
+    X_test, y_test, _ = collector.create_dataset_from_files("test", label_map=label_map)
     
     # 테스트 데이터가 없는 경우, 학습 데이터 중 일부를 테스트용으로 분리 (8:2 비율)
     if len(X_test) == 0:
@@ -46,11 +46,13 @@ def train_sign_language_model():
     print(f"  레이블 맵: {label_map}")
     
     # 4. 모델 초기화
-    # 입력 시퀀스 (30프레임, 각 프레임당 64차원 특징) 형태로 모델 구성
+    # 입력 시퀀스 (30프레임, 각 프레임당 128차원 특징) 형태로 모델 구성
+    feature_dim = collector.hand_detector.FEATURE_DIMENSION * 2
     model = SignLanguageModel(
-        input_shape=(30, 64),
+        input_shape=(30, feature_dim),
         num_classes=len(label_map)
     )
+    model.sign_labels = {index: label for label, index in label_map.items()}
     
     # 5. 데이터 증강 (Data Augmentation)
     # 랜덤 노이즈 추가 및 프레임 샘플링을 통해 학습 데이터를 다양화함
@@ -85,15 +87,16 @@ def train_sign_language_model():
     # 9. 학습 기록 저장 (loss/accuracy 로그)
     import json
     history_path = "models/training_history.json"
-    with open(history_path, 'w') as f:
+    with open(history_path, 'w', encoding='utf-8') as f:
         # numpy 타입은 JSON 직렬화 불가 → float 변환
         history_dict = {
             'loss': [float(x) for x in history.history['loss']],
             'accuracy': [float(x) for x in history.history['accuracy']],
             'val_loss': [float(x) for x in history.history.get('val_loss', [])],
-            'val_accuracy': [float(x) for x in history.history.get('val_accuracy', [])]
+            'val_accuracy': [float(x) for x in history.history.get('val_accuracy', [])],
+            'label_map': label_map  # 레이블 맵도 저장
         }
-        json.dump(history_dict, f, indent=2)
+        json.dump(history_dict, f, indent=2, ensure_ascii=False)
     
     print(f"학습 기록 저장 완료: {history_path}")
     

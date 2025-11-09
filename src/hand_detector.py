@@ -31,7 +31,7 @@ class HandDetector:
         )
         self.mp_draw = mp.solutions.drawing_utils
 
-        # 한 손의 랜드마크(21개 × 3좌표 = 63개) + 중심 좌표 1개 = 64차원
+        # 한 손의 랜드마크(21개 × 3좌표 = 63개) + 손 크기(scale) 1개 = 64차원
         self.FEATURE_DIMENSION = 64
 
     def detect_hands(self, frame: np.ndarray) -> Tuple[np.ndarray, List[List[float]]]:
@@ -77,20 +77,28 @@ class HandDetector:
             normalized: 정규화된 64차원 numpy 벡터
         """
         # 21개의 (x, y, z) 좌표를 numpy 배열로 변환
-        landmarks = np.array(landmarks).reshape(-1, 3)
+        landmarks = np.array(landmarks, dtype=np.float32).reshape(-1, 3)
 
         # 손 중심(평균) 계산
         center = np.mean(landmarks, axis=0)
 
-        # 중심 기준으로 이동
-        landmarks -= center
+        # 중심 기준으로 이동한 좌표 (위치 불변성)
+        centered_landmarks = landmarks - center
 
-        # 스케일 정규화 (손의 크기 차이 보정)
-        max_distance = np.max(np.linalg.norm(landmarks, axis=1))
-        if max_distance > 0:
-            landmarks /= max_distance
+        # 손 크기 기준으로 스케일 정규화 (크기 불변성)
+        max_distance = np.max(np.linalg.norm(centered_landmarks, axis=1))
+        scale = max_distance if max_distance > 0 else 1.0
+        normalized_landmarks = centered_landmarks / scale
 
-        # (21×3)=63차원 벡터로 평탄화 후 중심 좌표 추가 → 64차원 완성
-        normalized = np.concatenate([landmarks.flatten(), center])
+        # (21×3)=63차원 벡터 + 손 크기(scale) 1개 = 64차원 특징 벡터
+        flattened = normalized_landmarks.flatten()
+        normalized = np.concatenate([flattened, np.array([scale], dtype=np.float32)]).astype(np.float32)
 
         return normalized
+
+    def release(self):
+        """
+        MediaPipe 리소스 해제
+        """
+        if hasattr(self, 'hands') and self.hands:
+            self.hands.close()
