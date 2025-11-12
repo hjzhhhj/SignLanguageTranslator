@@ -40,7 +40,7 @@ class SignLanguageTranslator:
 
         # 상태 관리 변수
         self.is_running = False
-        self.detection_threshold = 0.75  # 예측 신뢰도 임계값
+        self.detection_threshold = 0.90  # 예측 신뢰도 임계값 (90% 미만 무시)
         self.min_sequence_length = 15    # 최소 시퀀스 길이
 
         # UI 관련 상태 변수
