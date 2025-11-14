@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 import pyttsx3
 from threading import Thread, Lock
-from queue import Queue
 import time
 from typing import List, Optional, Tuple
 from src.hand_detector import HandDetector
@@ -32,8 +31,7 @@ class SignLanguageTranslator:
             self.tts_available = False
             print(f"⚠ TTS 엔진 초기화 실패 (음성 출력 비활성화): {e}")
 
-        # 번역 관리용 큐 및 상태 변수
-        self.translation_queue = Queue()
+        # 번역 관리용 상태 변수
         self.last_prediction = None
         self.last_prediction_time = 0
         self.prediction_cooldown = 2.0  # 같은 단어 반복 방지용 쿨다운(초 단위)
@@ -48,9 +46,7 @@ class SignLanguageTranslator:
         self.confidence_score = 0.0
         self.text_lock = Lock()  # 스레드 안전성 보장용 락
 
-    # ==============================
-    # 🔹 한글 텍스트 렌더링 (PIL 사용)
-    # ==============================
+    # 한글 텍스트 렌더링 (PIL 사용)
     def _put_korean_text(self, frame: np.ndarray, text: str, position: tuple,
                          font_size: int = 50, color: tuple = (0, 255, 0)):
         """
@@ -98,9 +94,7 @@ class SignLanguageTranslator:
         # PIL RGB -> OpenCV BGR 변환
         return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
-    # ==============================
-    # 🔹 TTS(음성 출력) 설정
-    # ==============================
+    # TTS(음성 출력) 설정
     def _setup_tts(self):
         """TTS 엔진 설정 (한국어 음성 지원 시 적용)"""
         voices = self.tts_engine.getProperty('voices')
@@ -127,9 +121,7 @@ class SignLanguageTranslator:
         thread.daemon = True
         thread.start()
 
-    # ==============================
-    # 🔹 손 랜드마크 → 특징 벡터 변환
-    # ==============================
+    # 손 랜드마크 - 특징 벡터 변환
     def _get_padded_feature_vector(self, landmarks_list: List[List[float]]) -> np.ndarray:
         """
         감지된 랜드마크 리스트를 2손(128차원) 기준으로 패딩하여 반환
@@ -159,9 +151,7 @@ class SignLanguageTranslator:
         feature_vector = np.concatenate(sorted_features[:2]).astype(np.float32)
         return feature_vector
 
-    # ==============================
-    # 🔹 단일 프레임 처리
-    # ==============================
+    # 단일 프레임 처리
     def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, Optional[str]]:
         """
         단일 프레임에서 손을 인식하고 수어를 예측
@@ -186,7 +176,7 @@ class SignLanguageTranslator:
 
                 current_time = time.time()
 
-                # ⚠️ 클래스가 1개뿐인 경우 경고: 신뢰도가 높아도 예측하지 않음
+                # 클래스가 1개뿐인 경우 경고: 신뢰도가 높아도 예측하지 않음
                 if self.sign_model.num_classes <= 1:
                     # 경고 메시지 표시 (처음 한 번만)
                     if not hasattr(self, '_warned_single_class'):
@@ -215,9 +205,7 @@ class SignLanguageTranslator:
 
         return annotated_frame, translation
 
-    # ==============================
-    # 🔹 UI 표시
-    # ==============================
+    # UI 표시
     def draw_ui(self, frame: np.ndarray) -> np.ndarray:
         """UI 요소(텍스트, 상태, 신뢰도 등)를 프레임 위에 그리기"""
         height, width = frame.shape[:2]
@@ -248,15 +236,13 @@ class SignLanguageTranslator:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
 
         # 단축키 안내
-        cv2.putText(frame, "Space: Start/Stop | Q: Quit | R: Reset | T: Adjust Threshold",
+        cv2.putText(frame, "Space: Start/Stop | Q: Quit | R: Reset | S: Screenshot",
                     (width - 500, info_y),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
         return frame
 
-    # ==============================
-    # 🔹 실시간 번역 실행
-    # ==============================
+    # 실시간 번역 실행
     def run_realtime(self):
         """웹캠을 이용한 실시간 수어 번역"""
         cap = cv2.VideoCapture(0)
@@ -270,7 +256,6 @@ class SignLanguageTranslator:
         print("  Space: 번역 시작/중지")
         print("  Q: 종료")
         print("  R: 버퍼 초기화")
-        print("  T: 임계값 조정")
         print("  S: 스크린샷 저장\n")
 
         while True:
@@ -305,12 +290,6 @@ class SignLanguageTranslator:
                     self.display_text = ""
                     self.confidence_score = 0.0
                 print("버퍼 초기화됨")
-            elif key == ord('t'):
-                # 임계값 조정
-                new_threshold = float(input("새 임계값 입력 (0.0~1.0): "))
-                if 0 <= new_threshold <= 1:
-                    self.detection_threshold = new_threshold
-                    print(f"임계값이 {new_threshold:.2f}로 변경됨")
             elif key == ord('s'):
                 # 스크린샷 저장
                 timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -323,9 +302,7 @@ class SignLanguageTranslator:
         self.hand_detector.release()
         print("\n프로그램 종료")
 
-    # ==============================
-    # 🔹 비디오 파일 처리
-    # ==============================
+    # 비디오 파일 처리
     def process_video_file(self, video_path: str, output_path: Optional[str] = None):
         """
         비디오 파일을 입력으로 받아 수어 번역 수행 및 출력 저장

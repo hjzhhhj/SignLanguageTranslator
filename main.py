@@ -5,11 +5,7 @@ from src.sign_translator import SignLanguageTranslator
 from src.data_collector import SignLanguageDataCollector 
 
 def main():
-    """
-    프로그램의 진입점 (메인 함수)
-    실행 모드에 따라: 수어 번역 / 데이터 수집 / 모델 학습 기능 수행
-    """
-    
+    # 프로그램 진입점: 수어 번역 / 데이터 수집 / 모델 학습 기능 수행
     # 명령행 인자 파서 생성
     parser = argparse.ArgumentParser(description='수어 번역 프로그램')
 

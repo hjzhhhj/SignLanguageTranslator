@@ -10,18 +10,10 @@ from PIL import Image, ImageDraw, ImageFont
 
 class SignLanguageDataCollector:
     def __init__(self, data_dir: str = "data"):
-        """
-        수어(수화) 데이터 수집 도구 클래스
-
-        Args:
-            data_dir: 수집한 데이터를 저장할 상위 디렉토리 경로
-        """
+        # 수어 데이터 수집 도구 (data_dir: 저장 디렉토리)
         self.data_dir = data_dir
-        self.hand_detector = HandDetector()  # 손 랜드마크 탐지기
-        self.current_label = None             # 현재 수집 중인 수어 레이블
-        self.recording = False                # 녹화 상태 여부 플래그
-        self.sequence_data = []               # 현재 시퀀스 데이터 저장 버퍼
-        self.sequence_counter = 0             # 시퀀스 인덱스 카운터
+        self.hand_detector = HandDetector() # 손 랜드마크 탐지기
+        self.recording = False # 녹화 상태 여부 플래그
 
         # 학습/테스트용 디렉토리 생성
         os.makedirs(f"{data_dir}/train", exist_ok=True)
@@ -29,9 +21,7 @@ class SignLanguageDataCollector:
 
     def _put_korean_text(self, frame: np.ndarray, text: str, position: tuple,
                          font_size: int = 30, color: tuple = (255, 255, 255)):
-        """
-        OpenCV 이미지에 한글 텍스트를 렌더링
-        """
+        # OpenCV 이미지에 한글 텍스트 렌더링
         img_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         draw = ImageDraw.Draw(img_pil)
 
@@ -60,15 +50,8 @@ class SignLanguageDataCollector:
         return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
     def collect_data(self, label: str, num_sequences: int = 30):
-        """
-        특정 수어 레이블에 대한 데이터 시퀀스들을 수집
-
-        Args:
-            label: 수집할 수어 단어 (예: '안녕하세요')
-            num_sequences: 수집할 시퀀스 개수 (한 시퀀스는 약 30프레임)
-        """
+        # 특정 수어 레이블에 대한 데이터 시퀀스 수집 (label: 수어 단어, num_sequences: 수집 개수)
         cap = cv2.VideoCapture(0)  # 웹캠 연결
-        self.current_label = label
         collected_sequences = 0    # 수집된 시퀀스 개수 카운트
         current_sequence = []      # 현재 녹화 중인 시퀀스 버퍼
 
@@ -131,9 +114,7 @@ class SignLanguageDataCollector:
         print(f"\n'{label}' 데이터 수집 완료: {collected_sequences}개 시퀀스")
 
     def _save_sequence(self, sequence: list, label: str, index: int):
-        """
-        하나의 시퀀스 데이터를 파일로 저장 (.npy + .json 메타데이터)
-        """
+        # 시퀀스 데이터를 파일로 저장 (.npy + .json 메타데이터)
         # 파일 이름에 시간 스탬프 포함
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{self.data_dir}/train/{label}_{timestamp}_{index}.npy"
@@ -156,18 +137,7 @@ class SignLanguageDataCollector:
     def create_dataset_from_files(self,
                                   data_type: str = "train",
                                   label_map: Optional[Dict[str, int]] = None):
-        """
-        저장된 .npy 파일로부터 학습/테스트용 데이터셋 생성
-
-        Args:
-            data_type: "train" 또는 "test"
-            label_map: 레이블 이름 -> 인덱스 매핑(제공 시 그대로 사용)
-
-        Returns:
-            X: 특징 데이터 (N, 30, 128)
-            y: 원-핫 인코딩된 레이블 벡터
-            label_map: {레이블이름: 인덱스} 매핑 딕셔너리
-        """
+        # .npy 파일로부터 학습/테스트용 데이터셋 생성 (반환: X, y, label_map)
         data_path = f"{self.data_dir}/{data_type}"
         X, y = [], []
         allow_new_labels = label_map is None
@@ -211,9 +181,7 @@ class SignLanguageDataCollector:
         return X, y, label_map
 
     def interactive_collection(self):
-        """
-        터미널에서 사용자 입력을 받아 인터랙티브하게 수어 데이터를 수집하는 함수
-        """
+        # 터미널에서 사용자 입력을 받아 수어 데이터를 인터랙티브하게 수집
         print("\n=== 수어 데이터 수집 프로그램 ===")
         print("수집할 수어 단어를 입력하고 Enter를 누르세요.")
         print("'quit'을 입력하면 종료됩니다.\n")
@@ -239,11 +207,7 @@ class SignLanguageDataCollector:
         print("\n데이터 수집 종료.")
 
     def _get_padded_feature_vector(self, landmarks_list: List[List[float]]) -> np.ndarray:
-        """
-        손 랜드마크 리스트를 입력받아 2손(128차원) 기준으로 패딩된 벡터를 반환
-
-        각 손은 64차원 특징으로 변환되고, 손이 하나만 감지되면 나머지는 0으로 채워짐.
-        """
+        # 손 랜드마크를 2손(128차원) 기준으로 패딩된 벡터로 변환 (손 1개만 감지시 0으로 채움)
         all_hand_features = []
         feature_dim = self.hand_detector.FEATURE_DIMENSION
 
@@ -254,7 +218,7 @@ class SignLanguageDataCollector:
             normalized_features = self.hand_detector.normalize_landmarks(landmarks)
             all_hand_features.append((wrist_x, normalized_features))
 
-        # 왼손 → 오른손 순으로 정렬
+        # 왼손 -> 오른손 순으로 정렬
         all_hand_features.sort(key=lambda item: item[0])
         sorted_features = [feat for _, feat in all_hand_features]
 

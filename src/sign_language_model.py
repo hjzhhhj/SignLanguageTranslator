@@ -3,7 +3,7 @@ from tensorflow.keras import layers, models
 import numpy as np
 import json
 import os
-from typing import List, Tuple, Dict, Optional
+from typing import Tuple, Optional
 from collections import deque
 
 
@@ -31,25 +31,7 @@ class SignLanguageModel:
             self.load_model(model_path)
         else:
             self.build_model()
-            # 기본 수어 단어 사전 초기화 (새 모델인 경우에만)
-            self.initialize_sign_vocabulary()
-
-    def initialize_sign_vocabulary(self):
-        """
-        기본 50개 수어 단어 사전 초기화 (한국 수어 예시)
-        """
-        self.sign_labels = {
-            0: "안녕하세요", 1: "감사합니다", 2: "사랑해요", 3: "도와주세요", 4: "괜찮아요",
-            5: "미안합니다", 6: "네", 7: "아니요", 8: "이름", 9: "좋아요",
-            10: "싫어요", 11: "먹다", 12: "마시다", 13: "가다", 14: "오다",
-            15: "앉다", 16: "서다", 17: "보다", 18: "듣다", 19: "말하다",
-            20: "물", 21: "밥", 22: "집", 23: "학교", 24: "병원",
-            25: "친구", 26: "가족", 27: "어머니", 28: "아버지", 29: "형제",
-            30: "오늘", 31: "내일", 32: "어제", 33: "시간", 34: "돈",
-            35: "일", 36: "공부", 37: "책", 38: "전화", 39: "컴퓨터",
-            40: "아프다", 41: "피곤하다", 42: "배고프다", 43: "목마르다",
-            44: "춥다", 45: "덥다", 46: "크다", 47: "작다", 48: "많다", 49: "적다"
-        }
+            # sign_labels는 학습 시 실제 데이터의 레이블로 설정됨
 
     def build_model(self):
         """

@@ -4,24 +4,14 @@ import numpy as np
 from typing import List, Tuple
 
 class HandDetector:
-    """
-    MediaPipe를 이용한 손 랜드마크 감지 및 특징 추출 클래스
-    """
+    # MediaPipe를 이용한 손 랜드마크 감지 및 특징 추출
 
     def __init__(self,
                  static_image_mode: bool = False,
                  max_num_hands: int = 2,
                  detection_confidence: float = 0.5,
                  tracking_confidence: float = 0.5):
-        """
-        손 검출기 초기화
-
-        Args:
-            static_image_mode: True이면 한 프레임마다 새로 검출 (정지 이미지용)
-            max_num_hands: 감지할 최대 손 개수
-            detection_confidence: 손 검출 최소 신뢰도
-            tracking_confidence: 손 추적 최소 신뢰도
-        """
+        # 손 검출기 초기화
         self.mp_hands = mp.solutions.hands
         self.hands = self.mp_hands.Hands(
             static_image_mode=static_image_mode,
@@ -35,16 +25,7 @@ class HandDetector:
         self.FEATURE_DIMENSION = 64
 
     def detect_hands(self, frame: np.ndarray) -> Tuple[np.ndarray, List[List[float]]]:
-        """
-        입력 프레임에서 손을 감지하고 랜드마크 좌표를 추출
-
-        Args:
-            frame: 입력 영상 (BGR, OpenCV 형식)
-
-        Returns:
-            annotated_frame: 시각화된 영상
-            landmarks_list: 각 손의 랜드마크 좌표 리스트 (N손 × 63차원)
-        """
+        # 입력 프레임에서 손 감지 및 랜드마크 추출 (반환: annotated_frame, landmarks_list)
         # MediaPipe는 RGB 영상 입력 필요
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -67,15 +48,7 @@ class HandDetector:
         return frame, landmarks_list
 
     def normalize_landmarks(self, landmarks: List[float]) -> np.ndarray:
-        """
-        손 랜드마크를 정규화하여 64차원 특징 벡터로 반환
-
-        Args:
-            landmarks: [x1, y1, z1, ..., x21, y21, z21] 형태의 리스트 (길이 63)
-
-        Returns:
-            normalized: 정규화된 64차원 numpy 벡터
-        """
+        # 손 랜드마크를 정규화하여 64차원 특징 벡터로 반환
         # 21개의 (x, y, z) 좌표를 numpy 배열로 변환
         landmarks = np.array(landmarks, dtype=np.float32).reshape(-1, 3)
 
@@ -97,8 +70,6 @@ class HandDetector:
         return normalized
 
     def release(self):
-        """
-        MediaPipe 리소스 해제
-        """
+        # MediaPipe 리소스 해제
         if hasattr(self, 'hands') and self.hands:
             self.hands.close()

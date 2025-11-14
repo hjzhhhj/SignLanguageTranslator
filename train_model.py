@@ -1,16 +1,10 @@
-import os
-import numpy as np
-import tensorflow as tf
+import json
 from sklearn.model_selection import train_test_split
 from src.sign_language_model import SignLanguageModel
 from src.data_collector import SignLanguageDataCollector
 
 def train_sign_language_model():
-    """
-    수어 인식 모델을 학습하고 평가하며,
-    최종적으로 모델과 학습 기록, 그래프를 저장하는 함수
-    """
-    
+    # 수어 인식 모델 학습 및 평가, 모델/기록/그래프 저장
     print("모델 학습 준비 중...")
     
     # 1. 데이터 수집기 초기화
@@ -85,7 +79,6 @@ def train_sign_language_model():
     print(f"\n모델 저장 완료: {model_path}")
     
     # 9. 학습 기록 저장 (loss/accuracy 로그)
-    import json
     history_path = "models/training_history.json"
     with open(history_path, 'w', encoding='utf-8') as f:
         # numpy 타입은 JSON 직렬화 불가 → float 변환
@@ -136,7 +129,7 @@ def train_sign_language_model():
         # matplotlib가 설치되지 않은 경우
         print("matplotlib가 설치되지 않아 그래프를 생성할 수 없습니다.")
     
-    # ✅ 학습 완료 메시지
+    # 학습 완료 메시지
     print("\n모델 학습이 완료되었습니다!")
     print("이제 다음 명령으로 수어 번역을 시작할 수 있습니다:")
     print("  python main.py --model models/sign_language_model.h5")
