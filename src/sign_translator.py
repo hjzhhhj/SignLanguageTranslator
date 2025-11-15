@@ -34,11 +34,11 @@ class SignLanguageTranslator:
         # 번역 관리용 상태 변수
         self.last_prediction = None
         self.last_prediction_time = 0
-        self.prediction_cooldown = 2.0  # 같은 단어 반복 방지용 쿨다운(초 단위)
+        self.prediction_cooldown = 1.0  # 같은 단어 반복 방지용 쿨다운(초 단위)
 
         # 상태 관리 변수
         self.is_running = False
-        self.detection_threshold = 0.95  # 예측 신뢰도 임계값 (95% 미만 무시)
+        self.detection_threshold = 0.99  # 예측 신뢰도 임계값 (99% 미만 무시)
         self.min_sequence_length = 15    # 최소 시퀀스 길이
 
         # UI 관련 상태 변수
@@ -106,7 +106,7 @@ class SignLanguageTranslator:
                 break
 
         # 속도 및 볼륨 설정
-        self.tts_engine.setProperty('rate', 150)
+        self.tts_engine.setProperty('rate', 200)
         self.tts_engine.setProperty('volume', 0.9)
 
     def speak_text(self, text: str):
