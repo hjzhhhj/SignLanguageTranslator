@@ -25,11 +25,11 @@ class SignLanguageTranslator:
             self.tts_engine = pyttsx3.init()
             self._setup_tts()
             self.tts_available = True
-            print("✓ TTS 엔진 초기화 성공")
+            print("TTS 엔진 초기화 성공")
         except Exception as e:
             self.tts_engine = None
             self.tts_available = False
-            print(f"⚠ TTS 엔진 초기화 실패 (음성 출력 비활성화): {e}")
+            print(f"TTS 엔진 초기화 실패 (음성 출력 비활성화): {e}")
 
         # 번역 관리용 상태 변수
         self.last_prediction = None
@@ -38,13 +38,14 @@ class SignLanguageTranslator:
 
         # 상태 관리 변수
         self.is_running = False
-        self.detection_threshold = 0.90  # 예측 신뢰도 임계값 (90% 미만 무시)
+        self.detection_threshold = 0.95  # 예측 신뢰도 임계값 (95% 미만 무시)
         self.min_sequence_length = 15    # 최소 시퀀스 길이
 
         # UI 관련 상태 변수
         self.display_text = ""
         self.confidence_score = 0.0
         self.text_lock = Lock()  # 스레드 안전성 보장용 락
+        self.tts_lock = Lock()   # TTS 엔진 동시 사용 방지용 락
 
     # 한글 텍스트 렌더링 (PIL 사용)
     def _put_korean_text(self, frame: np.ndarray, text: str, position: tuple,
@@ -114,8 +115,12 @@ class SignLanguageTranslator:
             return  # TTS 사용 불가능하면 무시
 
         def _speak():
-            self.tts_engine.say(text)
-            self.tts_engine.runAndWait()
+            with self.tts_lock:  # TTS 엔진 동시 사용 방지
+                try:
+                    self.tts_engine.say(text)
+                    self.tts_engine.runAndWait()
+                except Exception as e:
+                    print(f"TTS 오류: {e}")
 
         thread = Thread(target=_speak)
         thread.daemon = True
@@ -180,7 +185,7 @@ class SignLanguageTranslator:
                 if self.sign_model.num_classes <= 1:
                     # 경고 메시지 표시 (처음 한 번만)
                     if not hasattr(self, '_warned_single_class'):
-                        print("\n⚠️ 경고: 학습된 클래스가 1개뿐입니다.")
+                        print("\n경고: 학습된 클래스가 1개뿐입니다.")
                         print("더 많은 수어 단어를 수집하고 재학습해주세요:")
                         print("  python3.11 main.py --mode collect")
                         print("  python3.11 main.py --mode train\n")

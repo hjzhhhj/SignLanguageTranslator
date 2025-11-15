@@ -200,7 +200,7 @@ class SignLanguageDataCollector:
                     num_sequences = int(input("수집할 시퀀스 개수 (기본값: 30): ") or 30)
                     self.collect_data(label, num_sequences)
                 except ValueError:
-                    print("⚠️ 올바른 숫자를 입력하세요.")
+                    print("올바른 숫자를 입력하세요.")
                 except KeyboardInterrupt:
                     print("\n수집 중단됨.")
 

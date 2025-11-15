@@ -41,21 +41,21 @@ class SignLanguageModel:
         출력: 50 클래스 softmax 분류
         """
         model = models.Sequential([
-            # 1️⃣ 첫 번째 LSTM 층 (시퀀스 전체 유지)
+            # 1. 첫 번째 LSTM 층 (시퀀스 전체 유지)
             layers.LSTM(128, return_sequences=True, input_shape=self.input_shape),
             layers.Dropout(0.2),
             layers.BatchNormalization(),
 
-            # 2️⃣ 두 번째 LSTM 층
+            # 2. 두 번째 LSTM 층
             layers.LSTM(256, return_sequences=True),
             layers.Dropout(0.3),
             layers.BatchNormalization(),
 
-            # 3️⃣ 세 번째 LSTM 층 (최종 출력만 사용)
+            # 3. 세 번째 LSTM 층 (최종 출력만 사용)
             layers.LSTM(128, return_sequences=False),
             layers.Dropout(0.2),
 
-            # 4️⃣ 완전연결(Dense) 계층 - 비선형 분류기
+            # 4. 완전연결(Dense) 계층 - 비선형 분류기
             layers.Dense(256, activation='relu'),
             layers.Dropout(0.4),
             layers.BatchNormalization(),
@@ -63,7 +63,7 @@ class SignLanguageModel:
             layers.Dense(128, activation='relu'),
             layers.Dropout(0.3),
 
-            # 5️⃣ 출력 계층 (클래스 수 만큼 Softmax)
+            # 5. 출력 계층 (클래스 수 만큼 Softmax)
             layers.Dense(self.num_classes, activation='softmax')
         ])
 
@@ -96,20 +96,20 @@ class SignLanguageModel:
         """
         # 학습 안정화를 위한 콜백 설정
         callbacks = [
-            # 1️⃣ EarlyStopping: 과적합 방지
+            # 1. EarlyStopping: 과적합 방지
             tf.keras.callbacks.EarlyStopping(
                 patience=10,
                 restore_best_weights=True,
                 monitor='val_loss'
             ),
-            # 2️⃣ ReduceLROnPlateau: 학습 정체 시 학습률 감소
+            # 2. ReduceLROnPlateau: 학습 정체 시 학습률 감소
             tf.keras.callbacks.ReduceLROnPlateau(
                 factor=0.5,
                 patience=5,
                 min_lr=1e-6,
                 monitor='val_loss'
             ),
-            # 3️⃣ ModelCheckpoint: 최고 정확도 모델 자동 저장
+            # 3. ModelCheckpoint: 최고 정확도 모델 자동 저장
             tf.keras.callbacks.ModelCheckpoint(
                 'models/best_sign_model.h5',
                 save_best_only=True,
@@ -217,7 +217,7 @@ class SignLanguageModel:
             path: 모델 경로 (.h5)
         """
         self.model = tf.keras.models.load_model(path)
-        print(f"✓ 모델 로드 성공: {path}")
+        print(f"모델 로드 성공: {path}")
 
         labels_path = path.replace('.h5', '_labels.json')
         if os.path.exists(labels_path):
@@ -227,9 +227,9 @@ class SignLanguageModel:
                 self.sign_labels = {int(k): v for k, v in labels_data.items()}
                 # 로드된 레이블 수에 맞춰 num_classes 업데이트
                 self.num_classes = len(self.sign_labels)
-                print(f"✓ 레이블 로드 성공: {list(self.sign_labels.values())}")
+                print(f"레이블 로드 성공: {list(self.sign_labels.values())}")
         else:
-            print(f"⚠ 레이블 파일을 찾을 수 없습니다: {labels_path}")
+            print(f"레이블 파일을 찾을 수 없습니다: {labels_path}")
 
     def create_augmented_data(self,
                               X: np.ndarray,
@@ -253,16 +253,16 @@ class SignLanguageModel:
             sample = sample.astype(np.float32)
             label = label.astype(np.float32)
 
-            # ✅ 원본 데이터
+            # 원본 데이터
             augmented_X.append(sample)
             augmented_y.append(label)
 
-            # ✅ 노이즈 추가 (랜덤 잡음)
+            # 노이즈 추가 (랜덤 잡음)
             noise = np.random.normal(0, 0.01, sample.shape).astype(np.float32)
             augmented_X.append(sample + noise)
             augmented_y.append(label)
 
-            # ✅ 시간 축 랜덤 샘플링 (프레임 드롭 후 패딩)
+            # 시간 축 랜덤 샘플링 (프레임 드롭 후 패딩)
             if sequence_length > 10:
                 keep_length = max(10, int(sequence_length * 0.9))
                 indices = np.sort(np.random.choice(sequence_length, size=keep_length, replace=False))
