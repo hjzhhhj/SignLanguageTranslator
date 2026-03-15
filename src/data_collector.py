@@ -26,10 +26,17 @@ class SignLanguageDataCollector:
         draw = ImageDraw.Draw(img_pil)
 
         try:
+            # 한글 폰트 경로 설정
+            # Mac용 폰트 경로
             font_paths = [
                 "/System/Library/Fonts/AppleSDGothicNeo.ttc",
                 "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
-                "/Library/Fonts/AppleGothic.ttf"
+                "/Library/Fonts/AppleGothic.ttf",
+
+                # Windows용 폰트 경로 (윈도우에서 사용 시 아래 경로 사용)
+                # "C:/Windows/Fonts/malgun.ttf",      # 맑은 고딕
+                # "C:/Windows/Fonts/gulim.ttc",       # 굴림
+                # "C:/Windows/Fonts/batang.ttc",      # 바탕
             ]
 
             font = None

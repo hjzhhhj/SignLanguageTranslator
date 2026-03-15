@@ -31,7 +31,7 @@ class SignLanguageTranslator:
             self.tts_available = False
             print(f"TTS 엔진 초기화 실패 (음성 출력 비활성화): {e}")
 
-        # 번역 관리용 상태 변수
+        # 번역 관리용 상태 변수 
         self.last_prediction = None
         self.last_prediction_time = 0
         self.prediction_cooldown = 1.0  # 같은 단어 반복 방지용 쿨다운(초 단위)
@@ -65,13 +65,18 @@ class SignLanguageTranslator:
         img_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         draw = ImageDraw.Draw(img_pil)
 
-        # 시스템 한글 폰트 사용 (Mac 기준)
+        # 시스템 한글 폰트 사용
         try:
             # Mac 시스템 폰트 경로들
             font_paths = [
                 "/System/Library/Fonts/AppleSDGothicNeo.ttc",  # Mac 기본 한글 폰트
                 "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
-                "/Library/Fonts/AppleGothic.ttf"
+                "/Library/Fonts/AppleGothic.ttf",
+
+                # Windows 시스템 폰트 경로들 (윈도우에서 사용 시)
+                # "C:/Windows/Fonts/malgun.ttf",      # 맑은 고딕
+                # "C:/Windows/Fonts/gulim.ttc",       # 굴림
+                # "C:/Windows/Fonts/batang.ttc",      # 바탕
             ]
 
             font = None

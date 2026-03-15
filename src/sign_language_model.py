@@ -34,12 +34,6 @@ class SignLanguageModel:
             # sign_labels는 학습 시 실제 데이터의 레이블로 설정됨
 
     def build_model(self):
-        """
-        LSTM 기반의 수어 인식 모델 구축
-
-        입력: (30, 128) 시퀀스 데이터
-        출력: 50 클래스 softmax 분류
-        """
         model = models.Sequential([
             # 1. 첫 번째 LSTM 층 (시퀀스 전체 유지)
             layers.LSTM(128, return_sequences=True, input_shape=self.input_shape),
